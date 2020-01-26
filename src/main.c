@@ -106,11 +106,12 @@ static void mpu_ccc_cfg_changed(const struct bt_gatt_attr *attr, u16_t value)
 	//bt_addr_to_str (attr->uuid)
 	//BT_DBG ("Ge");
 
-	char buf [128];
-	bt_uuid_to_str (attr->uuid, buf, 128);
+	//char buf [128];
+	//bt_uuid_to_str (attr->uuid, buf, 128);
 	//printk("Discovered attribute - uuid: %s, handle: %u\n", bt_uuid_str(attr->uuid), attr->handle);
 
-	LOG_INF("Notification %s : %s", log_strdup (buf), notify_enable ? "enabled" : "disabled");
+	//LOG_INF("Notification %p : %s", log_strdup (buf), notify_enable ? "enabled" : "disabled");
+	LOG_INF("Notification %i : %s", attr->handle, notify_enable ? "enabled" : "disabled");
 }
 
 

@@ -18,6 +18,9 @@
 #include <devicetree.h>
 #include <drivers/gpio.h>
 #include <logging/log.h>
+#include <device.h>
+#include <drivers/pwm.h>
+#include <logging/log.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
@@ -31,7 +34,21 @@
 
 LOG_MODULE_REGISTER(main);
 
-//#include <subsys/bluetooth/common/log.h>
+/*
+#if defined(DT_ALIAS_PWM_0_LABEL)
+#define PWM_DEV_NAME DT_ALIAS_PWM_0_LABEL
+#elif defined(DT_ALIAS_PWM_1_LABEL)
+#define PWM_DEV_NAME DT_ALIAS_PWM_1_LABEL
+#elif defined(DT_ALIAS_PWM_2_LABEL)
+#define PWM_DEV_NAME DT_ALIAS_PWM_2_LABEL
+#elif defined(DT_ALIAS_PWM_3_LABEL)
+#define PWM_DEV_NAME DT_ALIAS_PWM_3_LABEL
+#else
+#error "Define a PWM device"
+#endif
+*/
+
+
 
 extern u16_t but_val;
 extern struct device *led_dev;
@@ -279,9 +296,34 @@ static struct bt_conn_cb conn_callbacks =
 	.disconnected = disconnected,
 };
 
+#define PWM_DEV "PWM_2"
+
+//#define PERIOD (USEC_PER_SEC / 50U)
+#define PERIOD 1000*1000
+#define MINPULSEWIDTH 700
+#define PULSEWIDTH 1000*500
+
 void main(void)
 {
 	int err;
+	
+	struct device * pwm_dev;
+	pwm_dev = device_get_binding (PWM_DEV);
+	if (!pwm_dev)
+	{
+		LOG_INF ("Cannot find PWM device %s\n", PWM_DEV);
+		return;
+	}
+	else
+	{
+		LOG_INF ("Found PWM device %s\n", PWM_DEV);
+	}
+	
+	if (pwm_pin_set_usec (pwm_dev, 1, PERIOD, PULSEWIDTH, 0))
+	{
+		printk ("pwm pin set fails\n");
+		return;
+	}
 
 	err = button_init();
 	if (err)
@@ -301,6 +343,10 @@ void main(void)
 
 	while (1)
 	{
+		//led_on_off(0);
+		//k_sleep(K_SECONDS(1));
+		//led_on_off(1);
 		k_sleep(K_SECONDS(1));
+		
 	}
 }

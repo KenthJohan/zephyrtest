@@ -24,7 +24,7 @@ LOG_MODULE_REGISTER(button_svc);
 #define BUT_PIN     DT_ALIAS_SW0_GPIOS_PIN
 
 extern struct bt_conn *conn;
-extern struct bt_gatt_service_static stsensor_svc[];
+extern struct bt_gatt_service_static service_helloworld[];
 extern volatile bool notify_enable;
 
 static struct device *button_dev;
@@ -45,7 +45,7 @@ void button_pressed (struct device *gpiob, struct gpio_callback *cb, u32_t pins)
 		LOG_INF("Notify not enabled");
 		return;
 	}
-	err = bt_gatt_notify(NULL, &stsensor_svc->attrs[2], &but_val, sizeof(but_val));
+	err = bt_gatt_notify(NULL, &service_helloworld->attrs[2], &but_val, sizeof(but_val));
 	if (err)
 	{
 		LOG_ERR("Notify error: %d", err);

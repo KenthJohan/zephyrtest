@@ -19,6 +19,7 @@
 #include <logging/log.h>
 
 #include <devicetree.h>
+#include "led_svc.h"
 
 LOG_MODULE_REGISTER(led_svc);
 
@@ -26,14 +27,16 @@ LOG_MODULE_REGISTER(led_svc);
 #define LED      DT_ALIAS_LED0_GPIOS_PIN
 
 struct device *led_dev;
-bool led_state;
 
-void led_on_off(u32_t led_state)
+
+ssize_t led_recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
 {
-	if (led_dev)
+	if (led_dev == NULL)
 	{
-		gpio_pin_set (led_dev, LED, led_state);
+		LOG_ERR ("Error: no LED device");
 	}
+	gpio_pin_toggle (led_dev, LED);
+	return 0;
 }
 
 int led_init(void)
@@ -51,7 +54,5 @@ int led_init(void)
 		LOG_ERR ("Error %d: failed to configure pin %d '%s'\n", ret, LED, DT_ALIAS_LED0_LABEL);
 		return ret;
 	}
-	led_state = false;
-	led_on_off(0);
 	return 0;
 }

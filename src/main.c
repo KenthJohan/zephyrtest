@@ -54,29 +54,13 @@ extern u16_t but_val;
 extern struct device *led_dev;
 extern bool led_state;
 
-/* Prototype */
-static ssize_t recv(struct bt_conn *conn,
-		    const struct bt_gatt_attr *attr, const void *buf,
-		    u16_t len, u16_t offset, u8_t flags);
-
 /* ST Custom Service  */
-static struct bt_uuid_128 st_service_uuid = BT_UUID_INIT_128(
+static struct bt_uuid_128 service_stepper_uuid = BT_UUID_INIT_128(
 	0x8f, 0xe5, 0xb3, 0xd5, 0x2e, 0x7f, 0x4a, 0x98,
 	0x2a, 0x48, 0x7a, 0xcc, 0x40, 0xfe, 0x00, 0x00);
 
-/* ST LED service */
-static struct bt_uuid_128 led_char_uuid = BT_UUID_INIT_128(
-	0x19, 0xed, 0x82, 0xae, 0xed, 0x21, 0x4c, 0x9d,
-	0x41, 0x45, 0x22, 0x8e, 0x41, 0xfe, 0x00, 0x00);
-
-/* ST Notify button service */
-static struct bt_uuid_128 but_notif_uuid = BT_UUID_INIT_128(
-	0x19, 0xed, 0x82, 0xae, 0xed, 0x21, 0x4c, 0x9d,
-	0x41, 0x45, 0x22, 0x8e, 0x42, 0xfe, 0x00, 0x00);
-
-
 /* My Custom Service  */
-static struct bt_uuid_128 my_svc_uuid = BT_UUID_INIT_128(
+static struct bt_uuid_128 service_helloworld_uuid = BT_UUID_INIT_128(
 	0x8f, 0xe5, 0xb3, 0xd6, 0x2e, 0x7f, 0x4a, 0x98,
 	0x2a, 0x48, 0x7a, 0xcc, 0x40, 0xfe, 0x00, 0x00);
 	
@@ -132,127 +116,59 @@ static void mpu_ccc_cfg_changed(const struct bt_gatt_attr *attr, u16_t value)
 }
 
 
-
-
-
-struct es_measurement
+static ssize_t direction_recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
 {
-	u16_t flags; /* Reserved for Future Use */
-	u8_t sampling_func;
-	u32_t meas_period;
-	u32_t update_interval;
-	u8_t application;
-	u8_t meas_uncertainty;
-};
-
-struct temperature_sensor {
-	s16_t temp_value;
-
-	/* Valid Range */
-	s16_t lower_limit;
-	s16_t upper_limit;
-
-	/* ES trigger setting - Value Notification condition */
-	u8_t condition;
-	union
-	{
-		u32_t seconds;
-		s16_t ref_val; /* Reference temperature */
-	};
-
-	struct es_measurement meas;
-};
-
-/* ESS Trigger Setting conditions */
-#define ESS_TRIGGER_INACTIVE			    0x00
-#define ESS_FIXED_TIME_INTERVAL			    0x01
-#define ESS_NO_LESS_THAN_SPECIFIED_TIME		0x02
-#define ESS_VALUE_CHANGED			        0x03
-#define ESS_LESS_THAN_REF_VALUE			    0x04
-#define ESS_LESS_OR_EQUAL_TO_REF_VALUE		0x05
-#define ESS_GREATER_THAN_REF_VALUE		    0x06
-#define ESS_GREATER_OR_EQUAL_TO_REF_VALUE	0x07
-#define ESS_EQUAL_TO_REF_VALUE			    0x08
-#define ESS_NOT_EQUAL_TO_REF_VALUE		    0x09
-
-static struct temperature_sensor sensor_1 =
-{
-		.temp_value = 1200,
-		.lower_limit = -10000,
-		.upper_limit = 10000,
-		.condition = ESS_VALUE_CHANGED,
-		.meas.sampling_func = 0x00,
-		.meas.meas_period = 0x01,
-		.meas.update_interval = 5,
-		.meas.application = 0x1c,
-		.meas.meas_uncertainty = 0x04,
-};
-
-
-static ssize_t read_u16(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf, u16_t len, u16_t offset)
-{
-	printk ("read_u16");
-	const u16_t *u16 = attr->user_data;
-	u16_t value = sys_cpu_to_le16(*u16);
-
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, &value, sizeof(value));
+	uint8_t const * v = buf;
+	LOG_INF ("Changing direction %i : %i", len, v[0]);
+	return 0;
 }
 
-/* The embedded board is acting as GATT server.
- * The ST BLE Android app is the BLE GATT client.
- */
+static ssize_t period_recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
+{
+	uint8_t const * v = buf;
+	LOG_INF ("Changing period %i : %i", len, v[0]);
+	return 0;
+}
 
-/* ST BLE Sensor GATT services and characteristic */
 
 
 
-
-BT_GATT_SERVICE_DEFINE  (my_svc,
-BT_GATT_PRIMARY_SERVICE (&my_svc_uuid),
-BT_GATT_CHARACTERISTIC  (BT_UUID_TEMPERATURE,BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,BT_GATT_PERM_READ,read_u16, NULL, &sensor_1.temp_value),
-BT_GATT_CCC             (mpu_ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-BT_GATT_CUD             ("Temperature", BT_GATT_PERM_READ),
+BT_GATT_SERVICE_DEFINE 
+(
+service_stepper,
+BT_GATT_PRIMARY_SERVICE (&service_stepper_uuid),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, direction_recv, (void *)1),
+BT_GATT_CUD             ("Direction", BT_GATT_PERM_READ),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, period_recv, (void *)1),
+BT_GATT_CUD             ("Period", BT_GATT_PERM_READ),
 );
 
 
-BT_GATT_SERVICE_DEFINE  (stsensor_svc,
-BT_GATT_PRIMARY_SERVICE (&st_service_uuid),
-BT_GATT_CHARACTERISTIC  (&led_char_uuid.uuid,BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP,BT_GATT_PERM_WRITE, NULL, recv, (void *)1),
+BT_GATT_SERVICE_DEFINE 
+(
+service_helloworld,
+BT_GATT_PRIMARY_SERVICE (&service_helloworld_uuid),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56),BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP,BT_GATT_PERM_WRITE, NULL, led_recv, (void *)1),
 BT_GATT_CUD             ("LED", BT_GATT_PERM_READ),
-BT_GATT_CHARACTERISTIC  (&but_notif_uuid.uuid, BT_GATT_CHRC_NOTIFY,BT_GATT_PERM_READ, NULL, NULL, &but_val),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_NOTIFY,BT_GATT_PERM_READ, NULL, NULL, &but_val),
 BT_GATT_CCC             (mpu_ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 BT_GATT_CUD             ("Button", BT_GATT_PERM_READ),
 );
 
 //BT_GATT_CCC             (mpu_ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)
 
-static ssize_t recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
-{
-	if (led_dev)
-	{
-		if (led_state == true)
-		{
-			led_on_off(0);
-			LOG_INF("Turn off LED");
-		}
-		else
-		{
-			led_on_off(1);
-			LOG_INF("Turn on LED");
-		}
-		led_state = !led_state;
-	}
-	return 0;
-}
+
+
+
 
 static void bt_ready (int err)
 {
 	if (err)
 	{
-		LOG_ERR("Bluetooth init failed (err %d)", err);
+		LOG_ERR ("Bluetooth init failed (err %d)", err);
 		return;
 	}
-	LOG_INF("Bluetooth initialized");
+	LOG_INF ("Bluetooth initialized");
 	/* Start advertising */
 	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), NULL, 0);
 	if (err)

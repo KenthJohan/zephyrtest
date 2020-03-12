@@ -299,13 +299,16 @@ static struct bt_conn_cb conn_callbacks =
 #define PWM_DEV "PWM_2"
 
 //#define PERIOD (USEC_PER_SEC / 50U)
-#define PERIOD 1000*1000
+#define PERIOD 1000*100
 #define MINPULSEWIDTH 700
-#define PULSEWIDTH 1000*500
+#define PULSEWIDTH 1000*50
+
+#define GPIOPIN 2
+#define GPIOPORT "GPIOA"
 
 void main(void)
 {
-	int err;
+	int ret;
 	
 	struct device * pwm_dev;
 	pwm_dev = device_get_binding (PWM_DEV);
@@ -324,21 +327,41 @@ void main(void)
 		printk ("pwm pin set fails\n");
 		return;
 	}
-
-	err = button_init();
-	if (err)
+	
+	
+	
+	struct device * gpiodev;
+	gpiodev = device_get_binding (GPIOPORT);
+	if (!gpiodev)
 	{
-		LOG_ERR("Button init error: (err %d)", err);
+		LOG_INF ("Cannot find device %s\n", GPIOPORT);
+		return;
+	}
+	else
+	{
+		LOG_INF ("Found device %s, DT_ALIAS_LED0 %s %i\n", GPIOPORT, DT_ALIAS_LED0_GPIOS_CONTROLLER, DT_ALIAS_LED0_GPIOS_PIN);
+	}
+	
+	ret = gpio_pin_configure (gpiodev, GPIOPIN, GPIO_OUTPUT_INACTIVE);
+	if (ret < 0)
+	{
+		LOG_ERR ("Error %d: failed to configure pin %s.%d\n", ret, GPIOPORT, GPIOPIN);
+		return;
+	}
+	
+
+	ret = button_init();
+	if (ret)
+	{
+		LOG_ERR ("Button init error: (err %d)", ret);
 	}
 
 	led_init();
 	bt_conn_cb_register(&conn_callbacks);
-
-	/* Initialize the Bluetooth Subsystem */
-	err = bt_enable(bt_ready);
-	if (err)
+	ret = bt_enable(bt_ready);
+	if (ret)
 	{
-		LOG_ERR("Bluetooth init failed (err %d)", err);
+		LOG_ERR ("Bluetooth init failed (err %d)", ret);
 	}
 
 	while (1)
@@ -347,6 +370,8 @@ void main(void)
 		//k_sleep(K_SECONDS(1));
 		//led_on_off(1);
 		k_sleep(K_SECONDS(1));
-		
+		gpio_pin_set (gpiodev, GPIOPIN, 0);
+		k_sleep(K_SECONDS(1));
+		gpio_pin_set (gpiodev, GPIOPIN, 1);
 	}
 }

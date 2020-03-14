@@ -36,13 +36,13 @@ LOG_MODULE_REGISTER(main);
 
 /*
 #if defined(DT_ALIAS_PWM_0_LABEL)
-#define PWM_DEV_NAME DT_ALIAS_PWM_0_LABEL
+#define TMC2130_STEP_DEV_NAME DT_ALIAS_PWM_0_LABEL
 #elif defined(DT_ALIAS_PWM_1_LABEL)
-#define PWM_DEV_NAME DT_ALIAS_PWM_1_LABEL
+#define TMC2130_STEP_DEV_NAME DT_ALIAS_PWM_1_LABEL
 #elif defined(DT_ALIAS_PWM_2_LABEL)
-#define PWM_DEV_NAME DT_ALIAS_PWM_2_LABEL
+#define TMC2130_STEP_DEV_NAME DT_ALIAS_PWM_2_LABEL
 #elif defined(DT_ALIAS_PWM_3_LABEL)
-#define PWM_DEV_NAME DT_ALIAS_PWM_3_LABEL
+#define TMC2130_STEP_DEV_NAME DT_ALIAS_PWM_3_LABEL
 #else
 #error "Define a PWM device"
 #endif
@@ -116,10 +116,118 @@ static void mpu_ccc_cfg_changed(const struct bt_gatt_attr *attr, u16_t value)
 }
 
 
+
+
+//TMC2130 pin STEP ---yellow--- (PA0,A3,15)
+#define TMC2130_STEP_DEV "PWM_2"
+#define TMC2130_STEP_PIN 0
+#define TMC2130_STEP_PORT "GPIOA"
+
+//#define PERIOD (USEC_PER_SEC / 50U)
+#define PERIOD 1000*100
+#define MINPULSEWIDTH 700
+#define PULSEWIDTH 1000*50
+
+//TMC2130 pin DIR ---orange--- (PA2,D1,17)
+#define TMC2130_DIR_PORT "GPIOA"
+#define TMC2130_DIR_PIN 2
+
+//TMC2130 pin EN ---brown--- (PC6,D2,50)
+#define TMC2130_EN_PORT "GPIOC"
+#define TMC2130_EN_PIN 6
+
+//TMC2130 pin CS ---blue--- (PA10,D3,51)
+#define TMC2130_CS_PORT "GPIOA"
+#define TMC2130_CS_PIN 10
+
+#define TMC2130_SPI_DEV "SPI_1"
+
+//TMC2130 pin CSK --orange--- (PA5,D13,20,SCK)
+#define TMC2130_SCK_PORT "GPIOA"
+#define TMC2130_SCK_PIN 5
+
+//TMC2130 pin SDO --yellow--- (PA6,D13,21,MISO)
+#define TMC2130_SDO_PORT "GPIOA"
+#define TMC2130_SDO_PIN 6
+
+//TMC2130 pin SDI --green--- (PA7,D11,22,MOSI)
+#define TMC2130_SDI_PORT "GPIOA"
+#define TMC2130_SDI_PIN 7
+
+
+struct tmc2130
+{
+	struct device * dev_pwm_step;
+	struct device * dev_gpio_dir;
+	struct device * dev_gpio_en;
+	struct device * dev_spi;
+	u32_t period;
+};
+
+struct device * tmc2130_get_dev (char const * name)
+{
+	struct device * dev;
+	dev = device_get_binding (name);
+	if (dev == NULL)
+	{
+		LOG_INF ("Cannot find device %s", name);
+		return NULL;
+	}
+	else
+	{
+		LOG_INF ("Found device %s", name);
+	}
+	return dev;
+}
+
+void tmc2130_init (struct tmc2130 * dev)
+{
+	int ret;
+	dev->period = PERIOD;
+	dev->dev_pwm_step = tmc2130_get_dev (TMC2130_STEP_DEV);
+	dev->dev_gpio_dir = tmc2130_get_dev (TMC2130_DIR_PORT);
+	dev->dev_gpio_en = tmc2130_get_dev (TMC2130_EN_PORT);
+	dev->dev_spi = tmc2130_get_dev (TMC2130_SPI_DEV);
+	if (pwm_pin_set_usec (dev->dev_pwm_step, 1, PERIOD, PULSEWIDTH, 0))
+	{
+		printk ("PWM pin set fails\n");
+		return;
+	}
+	ret = gpio_pin_configure (dev->dev_gpio_dir, TMC2130_DIR_PIN, GPIO_OUTPUT_INACTIVE);
+	if (ret < 0)
+	{
+		LOG_ERR ("Error %d: failed to configure pin %s.%d\n", ret, TMC2130_DIR_PORT, TMC2130_EN_PIN);
+		return;
+	}
+	ret = gpio_pin_configure (dev->dev_gpio_en, TMC2130_EN_PIN, GPIO_OUTPUT_INACTIVE);
+	if (ret < 0)
+	{
+		LOG_ERR ("Error %d: failed to configure pin %s.%d\n", ret, TMC2130_EN_PORT, TMC2130_EN_PIN);
+		return;
+	}
+}
+
+
+struct tmc2130 tmc;
+
+
+
+
+
+
 static ssize_t direction_recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
 {
 	uint8_t const * v = buf;
-	LOG_INF ("Changing direction %i : %i", len, v[0]);
+	LOG_INF ("Changing DIR %i : %i", len, v[0]);
+	gpio_pin_set (tmc.dev_gpio_dir, TMC2130_DIR_PIN, v[0]);
+	return 0;
+}
+
+static ssize_t enable_recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
+{
+	uint8_t const * v = buf;
+	LOG_INF ("Changing EN %i : %i", len, v[0]);
+	gpio_pin_set (tmc.dev_gpio_en, TMC2130_EN_PIN, v[0]);
 	return 0;
 }
 
@@ -131,6 +239,22 @@ static ssize_t period_recv (struct bt_conn *conn, const struct bt_gatt_attr *att
 }
 
 
+static ssize_t read_u32(struct bt_conn *conn, const struct bt_gatt_attr *attr,void *buf, u16_t len, u16_t offset)
+{
+	const u32_t *u32 = attr->user_data;
+	u32_t value = sys_cpu_to_le32(*u32);
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, &value,sizeof(value));
+}
+
+
+static struct bt_gatt_cpf cha_format_value =
+{
+	8, //<Enumeration key="8" value="unsigned 32-bit integer"/>
+	0x00,
+	0x3000,
+	0x01,
+	0x0000
+};
 
 
 BT_GATT_SERVICE_DEFINE 
@@ -138,9 +262,12 @@ BT_GATT_SERVICE_DEFINE
 service_stepper,
 BT_GATT_PRIMARY_SERVICE (&service_stepper_uuid),
 BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, direction_recv, (void *)1),
-BT_GATT_CUD             ("Direction", BT_GATT_PERM_READ),
-BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, period_recv, (void *)1),
-BT_GATT_CUD             ("Period", BT_GATT_PERM_READ),
+BT_GATT_CUD             ("Pin DIR", BT_GATT_PERM_READ),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, enable_recv, (void *)1),
+BT_GATT_CUD             ("Pin EN", BT_GATT_PERM_READ),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE|BT_GATT_PERM_READ, read_u32, period_recv, &tmc.period),
+BT_GATT_CPF(&cha_format_value),
+BT_GATT_CUD             ("Pin STEP period", BT_GATT_PERM_READ),
 );
 
 
@@ -212,58 +339,13 @@ static struct bt_conn_cb conn_callbacks =
 	.disconnected = disconnected,
 };
 
-#define PWM_DEV "PWM_2"
 
-//#define PERIOD (USEC_PER_SEC / 50U)
-#define PERIOD 1000*100
-#define MINPULSEWIDTH 700
-#define PULSEWIDTH 1000*50
 
-#define GPIOPIN 2
-#define GPIOPORT "GPIOA"
 
 void main(void)
 {
 	int ret;
-	
-	struct device * pwm_dev;
-	pwm_dev = device_get_binding (PWM_DEV);
-	if (!pwm_dev)
-	{
-		LOG_INF ("Cannot find PWM device %s\n", PWM_DEV);
-		return;
-	}
-	else
-	{
-		LOG_INF ("Found PWM device %s\n", PWM_DEV);
-	}
-	
-	if (pwm_pin_set_usec (pwm_dev, 1, PERIOD, PULSEWIDTH, 0))
-	{
-		printk ("pwm pin set fails\n");
-		return;
-	}
-	
-	
-	
-	struct device * gpiodev;
-	gpiodev = device_get_binding (GPIOPORT);
-	if (!gpiodev)
-	{
-		LOG_INF ("Cannot find device %s\n", GPIOPORT);
-		return;
-	}
-	else
-	{
-		LOG_INF ("Found device %s, DT_ALIAS_LED0 %s %i\n", GPIOPORT, DT_ALIAS_LED0_GPIOS_CONTROLLER, DT_ALIAS_LED0_GPIOS_PIN);
-	}
-	
-	ret = gpio_pin_configure (gpiodev, GPIOPIN, GPIO_OUTPUT_INACTIVE);
-	if (ret < 0)
-	{
-		LOG_ERR ("Error %d: failed to configure pin %s.%d\n", ret, GPIOPORT, GPIOPIN);
-		return;
-	}
+	tmc2130_init (&tmc);
 	
 
 	ret = button_init();
@@ -283,11 +365,11 @@ void main(void)
 	while (1)
 	{
 		//led_on_off(0);
-		//k_sleep(K_SECONDS(1));
+		k_sleep(K_SECONDS(1));
 		//led_on_off(1);
-		k_sleep(K_SECONDS(1));
-		gpio_pin_set (gpiodev, GPIOPIN, 0);
-		k_sleep(K_SECONDS(1));
-		gpio_pin_set (gpiodev, GPIOPIN, 1);
+		//k_sleep(K_SECONDS(1));
+		//gpio_pin_set (gpiodev, TMC2130_DIR_PIN, 0);
+		//k_sleep(K_SECONDS(1));
+		//gpio_pin_set (gpiodev, TMC2130_DIR_PIN, 1);
 	}
 }

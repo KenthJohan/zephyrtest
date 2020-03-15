@@ -7,26 +7,35 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr/types.h>
+
 #include <stddef.h>
 #include <string.h>
+#include <stdio.h>
 #include <errno.h>
+
+#include <zephyr.h>
+#include <zephyr/types.h>
+
 #include <sys/printk.h>
 #include <sys/byteorder.h>
 #include <sys/util.h>
-#include <zephyr.h>
+
 #include <devicetree.h>
-#include <drivers/gpio.h>
-#include <logging/log.h>
+
 #include <device.h>
-#include <drivers/pwm.h>
+
 #include <logging/log.h>
+
+#include <drivers/pwm.h>
+#include <drivers/spi.h>
+#include <drivers/gpio.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/conn.h>
 #include <bluetooth/uuid.h>
 #include <bluetooth/gatt.h>
+
 #include "button_svc.h"
 #include "led_svc.h"
 
@@ -146,7 +155,7 @@ static void mpu_ccc_cfg_changed(const struct bt_gatt_attr *attr, u16_t value)
 #define TMC2130_SCK_PORT "GPIOA"
 #define TMC2130_SCK_PIN 5
 
-//TMC2130 pin SDO --yellow--- (PA6,D13,21,MISO)
+//TMC2130 pin SDO --yellow--- (PA6,D12,21,MISO)
 #define TMC2130_SDO_PORT "GPIOA"
 #define TMC2130_SDO_PIN 6
 
@@ -160,8 +169,11 @@ struct tmc2130
 	struct device * dev_pwm_step;
 	struct device * dev_gpio_dir;
 	struct device * dev_gpio_en;
+	struct device * dev_gpio_cs;
 	struct device * dev_spi;
+	struct spi_config spi_cfg;
 	u32_t period;
+	u32_t pulse;
 };
 
 struct device * tmc2130_get_dev (char const * name)
@@ -180,15 +192,130 @@ struct device * tmc2130_get_dev (char const * name)
 	return dev;
 }
 
+#define WRITE_FLAG     (1<<7) //write flag
+#define READ_FLAG      (0<<7) //read flag
+#define REG_GCONF      0x00
+#define REG_GSTAT      0x01
+#define REG_IHOLD_IRUN 0x10
+#define REG_CHOPCONF   0x6C
+#define REG_COOLCONF   0x6D
+#define REG_DCCTRL     0x6E
+#define REG_DRVSTATUS  0x6F
+
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
+#define TMC2130_RESET_FLAG 0x01
+#define TMC2130_DRIVER_ERROR 0x02
+#define TMC2130_SG2 0x04
+#define TMC2130_STANDSTILL 0x08
+
+void tmc_info_status (u8_t s)
+{
+	printf ("%sreset|", (s & TMC2130_RESET_FLAG)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf ("%serror|", (s & TMC2130_DRIVER_ERROR)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf ("%ssg2|", (s & TMC2130_SG2)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf ("%sstandstill", (s & TMC2130_STANDSTILL)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf (ANSI_COLOR_RESET"\n");
+}
+
+u8_t tmc_write (struct tmc2130 * dev, u8_t cmd, u32_t data)
+{
+	//TMC2130 MSB big-endian
+	u8_t s;
+	data = sys_cpu_to_be32 (data);
+	gpio_pin_set (dev->dev_gpio_cs, TMC2130_CS_PIN, 0);
+	struct spi_buf bufs_tx[] =
+	{
+	{
+		.buf = &cmd,
+		.len = sizeof(cmd)
+	},
+	{
+		.buf = &data,
+		.len = sizeof(data)
+	}
+};
+	struct spi_buf bufs_rx[] =
+	{
+	{
+		.buf = &s,
+		.len = sizeof(s)
+	}};
+	struct spi_buf_set tx =
+	{
+		.buffers = bufs_tx,
+		.count = 2
+	};
+	struct spi_buf_set rx =
+	{
+		.buffers = bufs_rx,
+		.count = 1
+	};
+	spi_transceive (dev->dev_spi, &dev->spi_cfg, &tx, &rx);
+	gpio_pin_set (dev->dev_gpio_cs, TMC2130_CS_PIN, 1);
+	LOG_INF ("Write %08x %08x => %02x", cmd, data, s);
+	tmc_info_status (s);
+	return s;
+}
+
+u8_t tmc_read (struct tmc2130 * dev, u8_t cmd, u32_t * data)
+{
+	tmc_write (dev, cmd, 0);
+	u8_t s;
+	gpio_pin_set (dev->dev_gpio_cs, TMC2130_CS_PIN, 0);
+	struct spi_buf bufs_tx[] =
+	{
+	{
+		.buf = &cmd,
+		.len = sizeof(cmd)
+	}
+};
+	struct spi_buf bufs_rx[] =
+	{
+	{
+		.buf = &s,
+		.len = sizeof(s)
+	},
+	{
+		.buf = &data,
+		.len = sizeof(data)
+	}
+};
+	struct spi_buf_set tx =
+	{
+		.buffers = bufs_tx,
+		.count = 1
+	};
+	struct spi_buf_set rx =
+	{
+		.buffers = bufs_rx,
+		.count = 2
+	};
+	spi_transceive (dev->dev_spi, &dev->spi_cfg, &tx, &rx);
+	gpio_pin_set (dev->dev_gpio_cs, TMC2130_CS_PIN, 1);
+	*data = sys_be32_to_cpu (*data);
+	LOG_INF ("Read %08x => %08x %02x", cmd, *data, s);
+	tmc_info_status (s);
+	return s;
+}
+
 void tmc2130_init (struct tmc2130 * dev)
 {
 	int ret;
 	dev->period = PERIOD;
+	dev->pulse = PULSEWIDTH;
 	dev->dev_pwm_step = tmc2130_get_dev (TMC2130_STEP_DEV);
 	dev->dev_gpio_dir = tmc2130_get_dev (TMC2130_DIR_PORT);
 	dev->dev_gpio_en = tmc2130_get_dev (TMC2130_EN_PORT);
+	dev->dev_gpio_cs = tmc2130_get_dev (TMC2130_CS_PORT);
 	dev->dev_spi = tmc2130_get_dev (TMC2130_SPI_DEV);
-	if (pwm_pin_set_usec (dev->dev_pwm_step, 1, PERIOD, PULSEWIDTH, 0))
+	if (pwm_pin_set_usec (dev->dev_pwm_step, 1, dev->period, dev->pulse, 0))
 	{
 		printk ("PWM pin set fails\n");
 		return;
@@ -199,13 +326,34 @@ void tmc2130_init (struct tmc2130 * dev)
 		LOG_ERR ("Error %d: failed to configure pin %s.%d\n", ret, TMC2130_DIR_PORT, TMC2130_EN_PIN);
 		return;
 	}
-	ret = gpio_pin_configure (dev->dev_gpio_en, TMC2130_EN_PIN, GPIO_OUTPUT_INACTIVE);
+	ret = gpio_pin_configure (dev->dev_gpio_en, TMC2130_EN_PIN, GPIO_OUTPUT_ACTIVE);
 	if (ret < 0)
 	{
 		LOG_ERR ("Error %d: failed to configure pin %s.%d\n", ret, TMC2130_EN_PORT, TMC2130_EN_PIN);
 		return;
 	}
+	ret = gpio_pin_configure (dev->dev_gpio_cs, TMC2130_CS_PIN, GPIO_OUTPUT_ACTIVE);
+	if (ret < 0)
+	{
+		LOG_ERR ("Error %d: failed to configure pin %s.%d\n", ret, TMC2130_CS_PORT, TMC2130_CS_PIN);
+		return;
+	}
+
+	dev->spi_cfg.operation = SPI_WORD_SET(8) | SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_TRANSFER_MSB;
+	dev->spi_cfg.frequency = 1000000;
+
+	//uint32_t data = 0;
+	//tmc_read (dev, REG_DRVSTATUS, &data);
+	//tmc_read (dev, REG_GSTAT, &data);
+
 }
+
+
+
+
+
+
+
 
 
 struct tmc2130 tmc;
@@ -233,8 +381,16 @@ static ssize_t enable_recv (struct bt_conn *conn, const struct bt_gatt_attr *att
 
 static ssize_t period_recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
 {
-	uint8_t const * v = buf;
-	LOG_INF ("Changing period %i : %i", len, v[0]);
+	u32_t const * u32 = buf;
+	tmc.period = sys_cpu_to_le32 (*u32);
+	LOG_INF ("Changing period to %u", tmc.period);
+	return 0;
+}
+
+static ssize_t reg_recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
+{
+	u32_t data;
+	tmc_read (&tmc, REG_DRVSTATUS, &data);
 	return 0;
 }
 
@@ -251,7 +407,7 @@ static struct bt_gatt_cpf cha_format_value =
 {
 	8, //<Enumeration key="8" value="unsigned 32-bit integer"/>
 	0x00,
-	0x3000,
+	0x2703,//0x2703	time (second)	org.bluetooth.unit.time.second
 	0x01,
 	0x0000
 };
@@ -266,8 +422,10 @@ BT_GATT_CUD             ("Pin DIR", BT_GATT_PERM_READ),
 BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, enable_recv, (void *)1),
 BT_GATT_CUD             ("Pin EN", BT_GATT_PERM_READ),
 BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE|BT_GATT_PERM_READ, read_u32, period_recv, &tmc.period),
-BT_GATT_CPF(&cha_format_value),
+BT_GATT_CPF             (&cha_format_value),
 BT_GATT_CUD             ("Pin STEP period", BT_GATT_PERM_READ),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, reg_recv, (void *)1),
+BT_GATT_CUD             ("reg_recv", BT_GATT_PERM_READ),
 );
 
 
@@ -346,7 +504,7 @@ void main(void)
 {
 	int ret;
 	tmc2130_init (&tmc);
-	
+	tmc_info_status (0x00);
 
 	ret = button_init();
 	if (ret)

@@ -6,6 +6,7 @@ CONFIG -= qt
 SOURCES += src/main.c
 SOURCES += src/button_svc.c
 SOURCES += src/led_svc.c
+SOURCES += src/tmc2130.c
 
 INCLUDEPATH += C:/zephyrproject/zephyr/include
 INCLUDEPATH += C:/zephyrproject/zephyr/include/drivers
@@ -28,3 +29,4 @@ QMAKE_CXXFLAGS_WARN_ON += -Wno-unused-parameter
 
 HEADERS += src/button_svc.h
 HEADERS += src/led_svc.h
+HEADERS += src/tmc2130.h

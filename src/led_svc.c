@@ -1,13 +1,3 @@
-/** @file
- *  @brief Button Service sample
- */
-
-/*
- * Copyright (c) 2019 Marcio Montenegro <mtuxpe@gmail.com>
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 #include <zephyr/types.h>
 #include <stddef.h>
 #include <string.h>

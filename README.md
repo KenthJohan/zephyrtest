@@ -1,1 +1,1 @@
-west build -b nucleo_wb55rg
+`west build -b nucleo_wb55rg`

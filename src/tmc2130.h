@@ -32,9 +32,8 @@
 #define TMC2130_STEP_PORT "GPIOA"
 
 //#define PERIOD (USEC_PER_SEC / 50U)
-#define PERIOD 1000*100
-#define MINPULSEWIDTH 700
-#define PULSEWIDTH 1000*50
+#define PERIOD 100
+#define PULSEWIDTH 50
 
 //TMC2130 pin DIR ---orange--- (PA2,D1,17)
 #define TMC2130_DIR_PORT "GPIOA"
@@ -87,11 +86,17 @@
 #define TMC2130_SG2 0x04
 #define TMC2130_STANDSTILL 0x08
 
+#define TMC2130_DRV_STATUS_STST       0x80000000
+#define TMC2130_DRV_STATUS_OLB        0x40000000
+#define TMC2130_DRV_STATUS_OLA        0x20000000
+#define TMC2130_DRV_STATUS_S2GB       0x10000000
+#define TMC2130_DRV_STATUS_S2GA       0x08000000
+#define TMC2130_DRV_STATUS_OT         0x04000000
+#define TMC2130_DRV_STATUS_STALLGUARD 0x02000000
 
 
-
-
-
+#define TMC2130_EN_FLAG 0x01
+#define TMC2130_DIR_FLAG 0x02
 
 struct tmc2130
 {
@@ -103,6 +108,7 @@ struct tmc2130
 	struct spi_config spi_cfg;
 	u32_t period;
 	u32_t pulse;
+	u8_t flags;
 };
 
 struct device * tmc2130_get_dev (char const * name);
@@ -110,6 +116,7 @@ struct device * tmc2130_get_dev (char const * name);
 
 
 void tmc2130_info_status (u8_t s);
+void tmc2130_info_drv_status (u32_t s);
 
 u8_t tmc2130_write (struct tmc2130 * dev, u8_t cmd, u32_t data);
 
@@ -117,8 +124,10 @@ u8_t tmc2130_read (struct tmc2130 * dev, u8_t cmd, u32_t * data);
 
 void tmc2130_init (struct tmc2130 * dev);
 
-
-
+void tmc2130_set_period (struct tmc2130 * dev, u32_t period);
+void tmc2130_set_pulse (struct tmc2130 * dev, u32_t pulse);
+void tmc2130_set_en (struct tmc2130 * dev, int value);
+void tmc2130_set_dir (struct tmc2130 * dev, int value);
 
 
 

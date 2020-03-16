@@ -33,20 +33,6 @@
 
 LOG_MODULE_REGISTER(main);
 
-/*
-#if defined(DT_ALIAS_PWM_0_LABEL)
-#define TMC2130_STEP_DEV_NAME DT_ALIAS_PWM_0_LABEL
-#elif defined(DT_ALIAS_PWM_1_LABEL)
-#define TMC2130_STEP_DEV_NAME DT_ALIAS_PWM_1_LABEL
-#elif defined(DT_ALIAS_PWM_2_LABEL)
-#define TMC2130_STEP_DEV_NAME DT_ALIAS_PWM_2_LABEL
-#elif defined(DT_ALIAS_PWM_3_LABEL)
-#define TMC2130_STEP_DEV_NAME DT_ALIAS_PWM_3_LABEL
-#else
-#error "Define a PWM device"
-#endif
-*/
-
 
 
 extern u16_t but_val;
@@ -127,43 +113,57 @@ struct tmc2130 tmc;
 
 
 
-static ssize_t direction_recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
+static ssize_t recv_tmc_dir (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
 {
 	uint8_t const * v = buf;
-	LOG_INF ("Changing DIR %i : %i", len, v[0]);
-	gpio_pin_set (tmc.dev_gpio_dir, TMC2130_DIR_PIN, v[0]);
+	tmc2130_set_dir (&tmc, v[0]);
+	LOG_INF ("Changing DIR to %i", tmc.flags & TMC2130_DIR_FLAG ? 1 : 0);
 	return 0;
 }
 
-static ssize_t enable_recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
+static ssize_t recv_tmc_en (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
 {
 	uint8_t const * v = buf;
-	LOG_INF ("Changing EN %i : %i", len, v[0]);
-	gpio_pin_set (tmc.dev_gpio_en, TMC2130_EN_PIN, v[0]);
+	tmc2130_set_en (&tmc, v[0]);
+	LOG_INF ("Changing EN to %i", tmc.flags & TMC2130_EN_FLAG ? 1 : 0);
 	return 0;
 }
 
-static ssize_t period_recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
+static ssize_t recv_tmc_period (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
 {
 	u32_t const * u32 = buf;
-	tmc.period = sys_cpu_to_le32 (*u32);
+	tmc2130_set_period (&tmc, sys_cpu_to_le32 (*u32));
 	LOG_INF ("Changing period to %u", tmc.period);
 	return 0;
 }
 
-static ssize_t reg_recv (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
+static ssize_t recv_tmc_pulse (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
 {
-	u32_t data;
-	tmc2130_read (&tmc, REG_DRVSTATUS, &data);
+	u32_t const * u32 = buf;
+	tmc2130_set_pulse (&tmc, sys_cpu_to_le32 (*u32));
+	LOG_INF ("Changing pulse to %u", tmc.pulse);
+	return 0;
+}
+
+static ssize_t recv_tmc_reg (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
+{
+	tmc2130_set_en (&tmc, 0);
+	u32_t data1;
+	u32_t data2;
+	tmc2130_read (&tmc, REG_GSTAT, &data1);
+	tmc2130_read (&tmc, REG_DRVSTATUS, &data2);
+	tmc2130_info_drv_status (data2);
+	tmc2130_write (&tmc, WRITE_FLAG|REG_CHOPCONF, 0x00008008UL);
+	tmc2130_set_en (&tmc, 1);
 	return 0;
 }
 
 
-static ssize_t read_u32(struct bt_conn *conn, const struct bt_gatt_attr *attr,void *buf, u16_t len, u16_t offset)
+static ssize_t read_u32 (struct bt_conn *conn, const struct bt_gatt_attr *attr,void *buf, u16_t len, u16_t offset)
 {
 	const u32_t *u32 = attr->user_data;
 	u32_t value = sys_cpu_to_le32(*u32);
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, &value,sizeof(value));
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, &value, sizeof(value));
 }
 
 
@@ -181,14 +181,17 @@ BT_GATT_SERVICE_DEFINE
 (
 service_stepper,
 BT_GATT_PRIMARY_SERVICE (&service_stepper_uuid),
-BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, direction_recv, (void *)1),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, recv_tmc_dir, (void *)1),
 BT_GATT_CUD             ("Pin DIR", BT_GATT_PERM_READ),
-BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, enable_recv, (void *)1),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, recv_tmc_en, (void *)1),
 BT_GATT_CUD             ("Pin EN", BT_GATT_PERM_READ),
-BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE|BT_GATT_PERM_READ, read_u32, period_recv, &tmc.period),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE|BT_GATT_PERM_READ, read_u32, recv_tmc_period, &tmc.period),
 BT_GATT_CPF             (&cha_format_value),
 BT_GATT_CUD             ("Pin STEP period", BT_GATT_PERM_READ),
-BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, reg_recv, (void *)1),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE|BT_GATT_PERM_READ, read_u32, recv_tmc_pulse, &tmc.pulse),
+BT_GATT_CPF             (&cha_format_value),
+BT_GATT_CUD             ("Pin STEP pulse", BT_GATT_PERM_READ),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, recv_tmc_reg, (void *)1),
 BT_GATT_CUD             ("reg_recv", BT_GATT_PERM_READ),
 );
 

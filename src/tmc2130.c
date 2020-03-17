@@ -39,7 +39,10 @@ void tmc2130_info_DRVSTATUS (u32_t s)
 	printf ("%sotpw|", (s & TMC2130_DRVSTATUS_OTPW)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
 	printf ("%sStallGuard|", (s & TMC2130_DRVSTATUS_STALLGUARD)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
 	printf ("%sfsactive|", (s & TMC2130_DRVSTATUS_FSACTIVE)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
-	printf (ANSI_COLOR_RESET"\n");
+	printf (ANSI_COLOR_RESET);
+	printf ("CSACTUAL%lu|", (s & TMC2130_DRVSTATUS_CSACTUAL_MASK) >> TMC2130_DRVSTATUS_CSACTUAL_BITPOS);
+	printf ("SGRESULT%lu", (s & TMC2130_DRVSTATUS_SGRESULT_MASK) >> TMC2130_DRVSTATUS_SGRESULT_BITPOS);
+	printf ("\n");
 }
 
 
@@ -57,6 +60,7 @@ u8_t tmc2130_tansfer (struct tmc2130 * dev, u8_t data_tx)
 
 u8_t tmc2130_write (struct tmc2130 * dev, u8_t cmd, u32_t data)
 {
+	//LOG_INF ("tmc2130_write 0x%02x 0x%08x", cmd, data);
 	uint8_t s;
 	gpio_pin_set (dev->dev_gpio_cs, TMC2130_CS_PIN, 0);
 	s = tmc2130_tansfer (dev, cmd);

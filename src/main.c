@@ -290,22 +290,29 @@ void main(void)
 	tmc2130_write (&tmc, WRITE_FLAG|REG_GCONF,      0x00000001UL); //voltage on AIN is current reference
 	tmc2130_write (&tmc, WRITE_FLAG|REG_IHOLD_IRUN, 0x00001010UL); //IHOLD=0x10, IRUN=0x10
 	tmc2130_write (&tmc, WRITE_FLAG|REG_CHOPCONF,   0x00008008UL); //native 256 microsteps, MRES=0, TBL=1=24, TOFF=8
+	int8_t a = -64;
+	printf ("REG_COOLCONF  0x%02X 0x%08lx\n", REG_COOLCONF, ((uint32_t)a << TMC2130_COOLCONF_SGT_BITPOS) & TMC2130_COOLCONF_SGT_MASK);
+	tmc2130_write (&tmc, WRITE_FLAG|REG_COOLCONF,   ((uint32_t)a << TMC2130_COOLCONF_SGT_BITPOS) & TMC2130_COOLCONF_SGT_MASK);
 	tmc2130_set_en (&tmc, 0);
 
 	while (1)
 	{
 		k_sleep(K_SECONDS(2));
-		tmc2130_set_en (&tmc, 1);
+		//tmc2130_set_en (&tmc, 1);
 		u32_t data1;
 		u32_t data2;
 		u8_t s;
+		s = tmc2130_read (&tmc, REG_CHOPCONF, &data1);
+		printf ("REG_CHOPCONF  0x%02X 0x%08X\n", s, data1);
 		s = tmc2130_read (&tmc, REG_GSTAT, &data1);
 		printf ("REG_GSTAT     0x%02X 0x%08X\n", s, data1);
 		s = tmc2130_read (&tmc, REG_DRVSTATUS, &data2);
 		printf ("REG_DRVSTATUS 0x%02X 0x%08X\n", s, data2);
 		tmc2130_info_DRVSTATUS (data2);
-		tmc2130_set_en (&tmc, 0);
+		s = tmc2130_read (&tmc, REG_COOLCONF, &data2);
+		printf ("REG_COOLCONF 0x%02X 0x%08X\n", s, data2);
 
+		//tmc2130_set_en (&tmc, 0);
 		//tmc2130_info_drv_status (data2);
 		//tmc2130_write (&tmc, WRITE_FLAG|REG_CHOPCONF, 0x00008008UL);
 		//tmc2130_set_en (&tmc, 1);

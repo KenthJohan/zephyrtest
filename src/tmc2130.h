@@ -86,13 +86,15 @@
 #define TMC2130_SG2 0x04
 #define TMC2130_STANDSTILL 0x08
 
-#define TMC2130_DRV_STATUS_STST       0x80000000
-#define TMC2130_DRV_STATUS_OLB        0x40000000
-#define TMC2130_DRV_STATUS_OLA        0x20000000
-#define TMC2130_DRV_STATUS_S2GB       0x10000000
-#define TMC2130_DRV_STATUS_S2GA       0x08000000
-#define TMC2130_DRV_STATUS_OT         0x04000000
-#define TMC2130_DRV_STATUS_STALLGUARD 0x02000000
+#define TMC2130_DRVSTATUS_STST       (1U << 31)
+#define TMC2130_DRVSTATUS_OLB        (1U << 30)
+#define TMC2130_DRVSTATUS_OLA        (1U << 29)
+#define TMC2130_DRVSTATUS_S2GB       (1U << 28)
+#define TMC2130_DRVSTATUS_S2GA       (1U << 27)
+#define TMC2130_DRVSTATUS_OTPW       (1U << 26)
+#define TMC2130_DRVSTATUS_OT         (1U << 25)
+#define TMC2130_DRVSTATUS_STALLGUARD (1U << 24)
+#define TMC2130_DRVSTATUS_FSACTIVE   (1U << 15)
 
 
 #define TMC2130_EN_FLAG 0x01
@@ -116,7 +118,7 @@ struct device * tmc2130_get_dev (char const * name);
 
 
 void tmc2130_info_status (u8_t s);
-void tmc2130_info_drv_status (u32_t s);
+void tmc2130_info_DRVSTATUS (u32_t s);
 
 u8_t tmc2130_write (struct tmc2130 * dev, u8_t cmd, u32_t data);
 

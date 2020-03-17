@@ -29,18 +29,66 @@ void tmc2130_info_status (u8_t s)
 }
 
 
-void tmc2130_info_drv_status (u32_t s)
+void tmc2130_info_DRVSTATUS (u32_t s)
 {
-	printf ("%s TMC2130_DRV_STATUS_STST|", (s & TMC2130_DRV_STATUS_STST)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
-	printf ("%s TMC2130_DRV_STATUS_OLB|", (s & TMC2130_DRV_STATUS_OLB)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
-	printf ("%s TMC2130_DRV_STATUS_OLA|", (s & TMC2130_DRV_STATUS_OLA)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
-	printf ("%s TMC2130_DRV_STATUS_S2GB|", (s & TMC2130_DRV_STATUS_S2GB)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
-	printf ("%s TMC2130_DRV_STATUS_S2GA|", (s & TMC2130_DRV_STATUS_S2GA)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
-	printf ("%s TMC2130_DRV_STATUS_STALLGUARD|", (s & TMC2130_DRV_STATUS_STALLGUARD)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf ("%sstst|", (s & TMC2130_DRVSTATUS_STST)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf ("%solb|", (s & TMC2130_DRVSTATUS_OLB)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf ("%sola|", (s & TMC2130_DRVSTATUS_OLA)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf ("%ss2gb|", (s & TMC2130_DRVSTATUS_S2GB)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf ("%ss2ga|", (s & TMC2130_DRVSTATUS_S2GA)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf ("%sotpw|", (s & TMC2130_DRVSTATUS_OTPW)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf ("%sStallGuard|", (s & TMC2130_DRVSTATUS_STALLGUARD)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
+	printf ("%sfsactive|", (s & TMC2130_DRVSTATUS_FSACTIVE)?ANSI_COLOR_GREEN:ANSI_COLOR_RED);
 	printf (ANSI_COLOR_RESET"\n");
 }
 
 
+u8_t tmc2130_tansfer (struct tmc2130 * dev, u8_t data_tx)
+{
+	u8_t data_rx;
+	struct spi_buf buf_tx[] = {{.buf = &data_tx,.len = sizeof(data_tx)}};
+	struct spi_buf buf_rx[] = {{.buf = &data_rx,.len = sizeof(data_rx)}};
+	struct spi_buf_set tx = {.buffers = buf_tx, .count = 1};
+	struct spi_buf_set rx = {.buffers = buf_rx, .count = 1};
+	spi_transceive (dev->dev_spi, &dev->spi_cfg, &tx, &rx);
+	return data_rx;
+}
+
+
+u8_t tmc2130_write (struct tmc2130 * dev, u8_t cmd, u32_t data)
+{
+	uint8_t s;
+	gpio_pin_set (dev->dev_gpio_cs, TMC2130_CS_PIN, 0);
+	s = tmc2130_tansfer (dev, cmd);
+	tmc2130_tansfer (dev, (data >> 24UL) & 0xFF) & 0xFF;
+	tmc2130_tansfer (dev, (data >> 16UL) & 0xFF) & 0xFF;
+	tmc2130_tansfer (dev, (data >>  8UL) & 0xFF) & 0xFF;
+	tmc2130_tansfer (dev, (data >>  0UL) & 0xFF) & 0xFF;
+	gpio_pin_set (dev->dev_gpio_cs, TMC2130_CS_PIN, 1);
+	return s;
+}
+
+
+u8_t tmc2130_read (struct tmc2130 * dev, u8_t cmd, u32_t * data)
+{
+	uint8_t s;
+	tmc2130_write (dev, cmd, 0UL); //set read address
+	gpio_pin_set (dev->dev_gpio_cs, TMC2130_CS_PIN, 0);
+	s = tmc2130_tansfer (dev, cmd);
+	*data  = tmc2130_tansfer (dev, 0x00) & 0xFF;
+	*data <<= 8;
+	*data |= tmc2130_tansfer (dev, 0x00) & 0xFF;
+	*data <<= 8;
+	*data |= tmc2130_tansfer (dev, 0x00) & 0xFF;
+	*data <<= 8;
+	*data |= tmc2130_tansfer (dev, 0x00) & 0xFF;
+	gpio_pin_set (dev->dev_gpio_cs, TMC2130_CS_PIN, 1);
+	return s;
+}
+
+
+
+/*
 u8_t tmc2130_write (struct tmc2130 * dev, u8_t cmd, u32_t data)
 {
 	//TMC2130 MSB big-endian
@@ -121,7 +169,7 @@ u8_t tmc2130_read (struct tmc2130 * dev, u8_t cmd, u32_t * data)
 	tmc2130_info_status (s);
 	return s;
 }
-
+*/
 
 void tmc2130_set_period (struct tmc2130 * dev, u32_t period)
 {

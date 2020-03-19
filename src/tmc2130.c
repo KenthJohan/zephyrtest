@@ -1,3 +1,4 @@
+#include <sys/__assert.h>
 #include "tmc2130.h"
 
 LOG_MODULE_REGISTER(tmc2130);
@@ -179,14 +180,7 @@ void tmc2130_set_period (struct tmc2130 * dev, u32_t period)
 {
 	int r;
 	r = pwm_pin_set_usec (dev->dev_pwm_step, 1, period, dev->pulse, 0);
-	if (r)
-	{
-		LOG_ERR ("PWM pin set period (%u) failed", period);
-	}
-	else
-	{
-		dev->period = period;
-	}
+	__ASSERT (r == 0, "pwm_pin_set_usec period (%u), pulse (%u) failed", period, dev->pulse);
 }
 
 
@@ -194,14 +188,7 @@ void tmc2130_set_pulse (struct tmc2130 * dev, u32_t pulse)
 {
 	int r;
 	r = pwm_pin_set_usec (dev->dev_pwm_step, 1, dev->period, pulse, 0);
-	if (r)
-	{
-		LOG_ERR ("PWM pin set pulse (%u) failed", pulse);
-	}
-	else
-	{
-		dev->pulse = pulse;
-	}
+	__ASSERT (r == 0, "pwm_pin_set_usec pulse (%u), period (%u) failed", pulse, dev->period);
 }
 
 
@@ -211,26 +198,14 @@ void tmc2130_set_dir (struct tmc2130 * dev, int value)
 	if (value)
 	{
 		r = gpio_pin_set (dev->dev_gpio_dir, TMC2130_DIR_PIN, 1);
-		if (r)
-		{
-			LOG_ERR ("DIR pin set fails");
-		}
-		else
-		{
-			dev->flags |= TMC2130_DIR_FLAG;
-		}
+		__ASSERT (r == 0, "gpio_pin_set failed (err %u)", r);
+		dev->flags |= TMC2130_DIR_FLAG;
 	}
 	else
 	{
 		r = gpio_pin_set (dev->dev_gpio_dir, TMC2130_DIR_PIN, 0);
-		if (r)
-		{
-			LOG_ERR ("DIR pin set fails");
-		}
-		else
-		{
-			dev->flags &= ~TMC2130_DIR_FLAG;
-		}
+		__ASSERT (r == 0, "gpio_pin_set failed (err %u)", r);
+		dev->flags &= ~TMC2130_DIR_FLAG;
 	}
 }
 
@@ -241,71 +216,47 @@ void tmc2130_set_en (struct tmc2130 * dev, int value)
 	if (value)
 	{
 		r = gpio_pin_set (dev->dev_gpio_en, TMC2130_EN_PIN, 1);
-		if (r)
-		{
-			LOG_ERR ("EN pin set fails");
-		}
-		else
-		{
-			dev->flags |= TMC2130_EN_FLAG;
-		}
+		__ASSERT (r == 0, "gpio_pin_set failed (err %u)", r);
+		dev->flags |= TMC2130_EN_FLAG;
 	}
 	else
 	{
 		r = gpio_pin_set (dev->dev_gpio_en, TMC2130_EN_PIN, 0);
-		if (r)
-		{
-			LOG_ERR ("EN pin set fails");
-		}
-		else
-		{
-			dev->flags &= ~TMC2130_EN_FLAG;
-		}
+		__ASSERT (r == 0, "gpio_pin_set failed (err %u)", r);
+		dev->flags &= ~TMC2130_EN_FLAG;
+
 	}
 }
 
 
 void tmc2130_init (struct tmc2130 * dev)
 {
-	int ret;
+	int r;
 	dev->period = PERIOD;
 	dev->pulse = PULSEWIDTH;
-	dev->dev_pwm_step = tmc2130_get_dev (TMC2130_STEP_DEV);
-	dev->dev_gpio_dir = tmc2130_get_dev (TMC2130_DIR_PORT);
-	dev->dev_gpio_en = tmc2130_get_dev (TMC2130_EN_PORT);
-	dev->dev_gpio_cs = tmc2130_get_dev (TMC2130_CS_PORT);
-	dev->dev_spi = tmc2130_get_dev (TMC2130_SPI_DEV);
-	if (pwm_pin_set_usec (dev->dev_pwm_step, 1, dev->period, dev->pulse, 0))
-	{
-		printk ("PWM pin set fails\n");
-		return;
-	}
-	ret = gpio_pin_configure (dev->dev_gpio_dir, TMC2130_DIR_PIN, GPIO_OUTPUT_INACTIVE);
-	if (ret < 0)
-	{
-		LOG_ERR ("Error %d: failed to configure pin %s.%d\n", ret, TMC2130_DIR_PORT, TMC2130_EN_PIN);
-		return;
-	}
-	ret = gpio_pin_configure (dev->dev_gpio_en, TMC2130_EN_PIN, GPIO_OUTPUT_ACTIVE);
-	if (ret < 0)
-	{
-		LOG_ERR ("Error %d: failed to configure pin %s.%d\n", ret, TMC2130_EN_PORT, TMC2130_EN_PIN);
-		return;
-	}
-	ret = gpio_pin_configure (dev->dev_gpio_cs, TMC2130_CS_PIN, GPIO_OUTPUT_ACTIVE);
-	if (ret < 0)
-	{
-		LOG_ERR ("Error %d: failed to configure pin %s.%d\n", ret, TMC2130_CS_PORT, TMC2130_CS_PIN);
-		return;
-	}
-
+	dev->dev_pwm_step = device_get_binding (TMC2130_STEP_DEV);
+	__ASSERT (dev->dev_pwm_step, "device_get_binding failed");
+	dev->dev_gpio_dir = device_get_binding (TMC2130_DIR_PORT);
+	__ASSERT (dev->dev_gpio_dir, "device_get_binding failed");
+	dev->dev_gpio_en = device_get_binding (TMC2130_EN_PORT);
+	__ASSERT (dev->dev_gpio_en, "device_get_binding failed");
+	dev->dev_gpio_cs = device_get_binding (TMC2130_CS_PORT);
+	__ASSERT (dev->dev_gpio_cs, "device_get_binding failed");
+	dev->dev_spi = device_get_binding (TMC2130_SPI_DEV);
+	__ASSERT (dev->dev_spi, "device_get_binding failed");
+	r = pwm_pin_set_usec (dev->dev_pwm_step, 1, dev->period, dev->pulse, 0);
+	__ASSERT (r == 0, "pwm_pin_set_usec failed (err %u)", r);
+	r = gpio_pin_configure (dev->dev_gpio_dir, TMC2130_DIR_PIN, GPIO_OUTPUT_INACTIVE);
+	__ASSERT (r == 0, "gpio_pin_configure failed (err %u)", r);
+	r = gpio_pin_configure (dev->dev_gpio_en, TMC2130_EN_PIN, GPIO_OUTPUT_ACTIVE);
+	__ASSERT (r == 0, "gpio_pin_configure failed (err %u)", r);
+	r = gpio_pin_configure (dev->dev_gpio_cs, TMC2130_CS_PIN, GPIO_OUTPUT_ACTIVE);
+	__ASSERT (r == 0, "gpio_pin_configure failed (err %u)", r);
 	dev->spi_cfg.operation = SPI_WORD_SET(8) | SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_TRANSFER_MSB;
 	dev->spi_cfg.frequency = 1000000;
-
 	//uint32_t data = 0;
 	//tmc_read (dev, REG_DRVSTATUS, &data);
 	//tmc_read (dev, REG_GSTAT, &data);
-
 }
 
 

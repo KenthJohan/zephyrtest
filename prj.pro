@@ -30,3 +30,5 @@ QMAKE_CXXFLAGS_WARN_ON += -Wno-unused-parameter
 HEADERS += src/button_svc.h
 HEADERS += src/led_svc.h
 HEADERS += src/tmc2130.h
+
+DEFINES += CONFIG_ASSERT

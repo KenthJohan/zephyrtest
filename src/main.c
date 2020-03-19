@@ -9,6 +9,7 @@
 #include <sys/printk.h>
 #include <sys/byteorder.h>
 #include <sys/util.h>
+#include <sys/__assert.h>
 
 #include <devicetree.h>
 
@@ -26,12 +27,17 @@
 #include <bluetooth/uuid.h>
 #include <bluetooth/gatt.h>
 
+
+
 #include "button_svc.h"
 #include "led_svc.h"
 #include "tmc2130.h"
 
 
 LOG_MODULE_REGISTER(main);
+
+
+
 
 
 
@@ -210,27 +216,16 @@ BT_GATT_CUD             ("Button", BT_GATT_PERM_READ),
 //BT_GATT_CCC             (mpu_ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)
 
 
-
-
-
 static void bt_ready (int err)
 {
-	if (err)
-	{
-		LOG_ERR ("Bluetooth init failed (err %d)", err);
-		return;
-	}
 	LOG_INF ("Bluetooth initialized");
 	/* Start advertising */
+	__ASSERT (err == 0, "Advertising failed to start (err %d)", err);
 	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), NULL, 0);
-	if (err)
-	{
-		LOG_ERR("Advertising failed to start (err %d)", err);
-		return;
-	}
-
-	LOG_INF("Configuration mode: waiting connections...");
+	__ASSERT (err == 0, "Advertising failed to start (err %d)", err);
+	LOG_INF ("Configuration mode: waiting connections...");
 }
+
 
 static void connected(struct bt_conn *connected, u8_t err)
 {
@@ -248,6 +243,7 @@ static void connected(struct bt_conn *connected, u8_t err)
 	}
 }
 
+
 static void disconnected(struct bt_conn *disconn, u8_t reason)
 {
 	if (conn)
@@ -258,13 +254,12 @@ static void disconnected(struct bt_conn *disconn, u8_t reason)
 	LOG_INF("Disconnected (reason %u)", reason);
 }
 
+
 static struct bt_conn_cb conn_callbacks =
 {
 	.connected = connected,
 	.disconnected = disconnected,
 };
-
-
 
 
 void main(void)
@@ -274,18 +269,11 @@ void main(void)
 	tmc2130_info_status (0x00);
 
 	ret = button_init();
-	if (ret)
-	{
-		LOG_ERR ("Button init error: (err %d)", ret);
-	}
 
 	led_init();
-	bt_conn_cb_register(&conn_callbacks);
-	ret = bt_enable(bt_ready);
-	if (ret)
-	{
-		LOG_ERR ("Bluetooth init failed (err %d)", ret);
-	}
+	bt_conn_cb_register (&conn_callbacks);
+	ret = bt_enable (bt_ready);
+	__ASSERT (ret == 0, "Bluetooth bt_enable failed (err %d)", ret);
 
 	tmc2130_write (&tmc, WRITE_FLAG|REG_GCONF,      0x00000001UL); //voltage on AIN is current reference
 	tmc2130_write (&tmc, WRITE_FLAG|REG_IHOLD_IRUN, 0x00001010UL); //IHOLD=0x10, IRUN=0x10
@@ -294,6 +282,17 @@ void main(void)
 	printf ("REG_COOLCONF  0x%02X 0x%08lx\n", REG_COOLCONF, ((uint32_t)a << TMC2130_COOLCONF_SGT_BITPOS) & TMC2130_COOLCONF_SGT_MASK);
 	tmc2130_write (&tmc, WRITE_FLAG|REG_COOLCONF,   ((uint32_t)a << TMC2130_COOLCONF_SGT_BITPOS) & TMC2130_COOLCONF_SGT_MASK);
 	tmc2130_set_en (&tmc, 0);
+
+
+
+	struct device * button_0 = device_get_binding (DT_ALIAS_SW0_GPIOS_CONTROLLER);
+	__ASSERT (button_0, "device_get_binding failed");
+	struct device * button_1 = device_get_binding (DT_ALIAS_SW1_GPIOS_CONTROLLER);
+	__ASSERT (button_1, "device_get_binding failed");
+	ret = gpio_pin_configure (button_0, DT_ALIAS_SW0_GPIOS_PIN, DT_ALIAS_SW0_GPIOS_FLAGS | GPIO_INPUT);
+	__ASSERT (ret == 0, "gpio_pin_configure failed (err %d)", ret);
+	ret = gpio_pin_configure (button_1, DT_ALIAS_SW1_GPIOS_PIN, DT_ALIAS_SW1_GPIOS_FLAGS | GPIO_INPUT);
+	__ASSERT (ret == 0, "gpio_pin_configure failed (err %d)", ret);
 
 	while (1)
 	{
@@ -309,8 +308,6 @@ void main(void)
 		s = tmc2130_read (&tmc, REG_DRVSTATUS, &data2);
 		printf ("REG_DRVSTATUS 0x%02X 0x%08X\n", s, data2);
 		tmc2130_info_DRVSTATUS (data2);
-		s = tmc2130_read (&tmc, REG_COOLCONF, &data2);
-		printf ("REG_COOLCONF 0x%02X 0x%08X\n", s, data2);
 
 		//tmc2130_set_en (&tmc, 0);
 		//tmc2130_info_drv_status (data2);

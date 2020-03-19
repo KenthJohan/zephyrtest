@@ -69,9 +69,9 @@
 #define REG_GSTAT      0x01
 #define REG_IHOLD_IRUN 0x10
 #define REG_CHOPCONF   0x6C
-#define REG_COOLCONF   0x6D
-#define REG_DCCTRL     0x6E
-#define REG_DRVSTATUS  0x6F
+#define REG_COOLCONF   0x6D // W, n=25, CoolStep smart current control register and StallGuard2 configuration.
+#define REG_DCCTRL     0x6E // W, n=24, DcStep(DC) automatic commutation configuration register
+#define REG_DRVSTATUS  0x6F // R, n=32, StallGuard2 value and driver error flags
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"

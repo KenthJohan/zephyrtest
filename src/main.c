@@ -262,13 +262,77 @@ static struct bt_conn_cb conn_callbacks =
 };
 
 
+enum app_cmd
+{
+	APP_CMD_STANDSTILL,
+	APP_CMD_FORWARD,
+	APP_CMD_BACKWARD,
+	APP_CMD_CONTINUE,
+};
+
+
+static struct gpio_callback button_0_cb;
+static struct gpio_callback button_1_cb;
+static struct gpio_callback button_2_cb;
+
+static enum app_cmd cmd = APP_CMD_CONTINUE;
+
+void button_0_pressed (struct device * gpio, struct gpio_callback * cb, u32_t pins)
+{
+	printf ("button_pressed %i %x\n", gpio_pin_get (gpio, DT_GPIO_KEYS_BUTTON_0_GPIOS_PIN), pins);
+	if (pins & BIT(DT_GPIO_KEYS_BUTTON_0_GPIOS_PIN))
+	{
+		if (gpio_pin_get (gpio, DT_GPIO_KEYS_BUTTON_0_GPIOS_PIN))
+		{
+			cmd = APP_CMD_FORWARD;
+		}
+		else
+		{
+			cmd = APP_CMD_STANDSTILL;
+		}
+	}
+
+	if (pins & BIT(DT_GPIO_KEYS_BUTTON_1_GPIOS_PIN))
+	{
+		if (gpio_pin_get (gpio, DT_GPIO_KEYS_BUTTON_1_GPIOS_PIN))
+		{
+			cmd = APP_CMD_BACKWARD;
+		}
+		else
+		{
+			cmd = APP_CMD_STANDSTILL;
+		}
+	}
+
+
+	/*
+	tmc2130_write (&tmc, WRITE_FLAG|REG_CHOPCONF,   0x00008008UL); //native 256 microsteps, MRES=0, TBL=1=24, TOFF=8
+	tmc2130_set_en (&tmc, 0);
+	tmc2130_set_dir (&tmc, 0);
+	*/
+}
+
+
+void button_1_pressed (struct device * gpio, struct gpio_callback * cb, u32_t pins)
+{
+	printf ("button_1_pressed\n");
+}
+
+
+void button_2_pressed (struct device * gpio, struct gpio_callback * cb, u32_t pins)
+{
+	printf ("button_2_pressed\n");
+}
+
+
+
 void main(void)
 {
 	int ret;
 	tmc2130_init (&tmc);
 	tmc2130_info_status (0x00);
 
-	ret = button_init();
+	//ret = button_init();
 
 	led_init();
 	bt_conn_cb_register (&conn_callbacks);
@@ -281,23 +345,44 @@ void main(void)
 	int8_t a = -64;
 	printf ("REG_COOLCONF  0x%02X 0x%08lx\n", REG_COOLCONF, ((uint32_t)a << TMC2130_COOLCONF_SGT_BITPOS) & TMC2130_COOLCONF_SGT_MASK);
 	tmc2130_write (&tmc, WRITE_FLAG|REG_COOLCONF,   ((uint32_t)a << TMC2130_COOLCONF_SGT_BITPOS) & TMC2130_COOLCONF_SGT_MASK);
-	tmc2130_set_en (&tmc, 0);
+	tmc2130_set_en (&tmc, 1);
 
 
 
-	struct device * button_0 = device_get_binding (DT_ALIAS_SW0_GPIOS_CONTROLLER);
+	struct device * button_0 = device_get_binding (DT_GPIO_KEYS_BUTTON_0_GPIOS_CONTROLLER);
 	__ASSERT (button_0, "device_get_binding failed");
-	struct device * button_1 = device_get_binding (DT_ALIAS_SW1_GPIOS_CONTROLLER);
+	struct device * button_1 = device_get_binding (DT_GPIO_KEYS_BUTTON_1_GPIOS_CONTROLLER);
 	__ASSERT (button_1, "device_get_binding failed");
-	ret = gpio_pin_configure (button_0, DT_ALIAS_SW0_GPIOS_PIN, DT_ALIAS_SW0_GPIOS_FLAGS | GPIO_INPUT);
+	struct device * button_2 = device_get_binding (DT_GPIO_KEYS_BUTTON_2_GPIOS_CONTROLLER);
+	__ASSERT (button_2, "device_get_binding failed");
+	ret = gpio_pin_configure (button_0, DT_GPIO_KEYS_BUTTON_0_GPIOS_PIN, DT_GPIO_KEYS_BUTTON_0_GPIOS_FLAGS | GPIO_INPUT);
 	__ASSERT (ret == 0, "gpio_pin_configure failed (err %d)", ret);
-	ret = gpio_pin_configure (button_1, DT_ALIAS_SW1_GPIOS_PIN, DT_ALIAS_SW1_GPIOS_FLAGS | GPIO_INPUT);
+	ret = gpio_pin_configure (button_1, DT_GPIO_KEYS_BUTTON_1_GPIOS_PIN, DT_GPIO_KEYS_BUTTON_1_GPIOS_FLAGS | GPIO_INPUT);
+	__ASSERT (ret == 0, "gpio_pin_configure failed (err %d)", ret);
+	ret = gpio_pin_configure (button_2, DT_GPIO_KEYS_BUTTON_2_GPIOS_PIN, DT_GPIO_KEYS_BUTTON_2_GPIOS_FLAGS | GPIO_INPUT);
 	__ASSERT (ret == 0, "gpio_pin_configure failed (err %d)", ret);
 
+
+	gpio_init_callback (&button_0_cb, button_0_pressed, BIT (DT_GPIO_KEYS_BUTTON_0_GPIOS_PIN));
+	gpio_init_callback (&button_1_cb, button_0_pressed, BIT (DT_GPIO_KEYS_BUTTON_1_GPIOS_PIN));
+	gpio_init_callback (&button_2_cb, button_0_pressed, BIT (DT_GPIO_KEYS_BUTTON_2_GPIOS_PIN));
+	gpio_add_callback (button_0, &button_0_cb);
+	gpio_add_callback (button_1, &button_1_cb);
+	gpio_add_callback (button_2, &button_2_cb);
+	ret = gpio_pin_interrupt_configure (button_0, DT_GPIO_KEYS_BUTTON_0_GPIOS_PIN, GPIO_INT_EDGE_BOTH);
+	__ASSERT (ret == 0, "gpio_pin_interrupt_configure failed (err %d)", ret);
+	ret = gpio_pin_interrupt_configure (button_1, DT_GPIO_KEYS_BUTTON_1_GPIOS_PIN, GPIO_INT_EDGE_BOTH);
+	__ASSERT (ret == 0, "gpio_pin_interrupt_configure failed (err %d)", ret);
+	ret = gpio_pin_interrupt_configure (button_2, DT_GPIO_KEYS_BUTTON_2_GPIOS_PIN, GPIO_INT_EDGE_BOTH);
+	__ASSERT (ret == 0, "gpio_pin_interrupt_configure failed (err %d)", ret);
+
+	u32_t stepper_data;
+	u8_t stepper_status;
 	while (1)
 	{
-		k_sleep(K_SECONDS(2));
+		k_sleep (K_MSEC(1));
 		//tmc2130_set_en (&tmc, 1);
+		/*
 		u32_t data1;
 		u32_t data2;
 		u8_t s;
@@ -308,10 +393,44 @@ void main(void)
 		s = tmc2130_read (&tmc, REG_DRVSTATUS, &data2);
 		printf ("REG_DRVSTATUS 0x%02X 0x%08X\n", s, data2);
 		tmc2130_info_DRVSTATUS (data2);
+		*/
 
 		//tmc2130_set_en (&tmc, 0);
 		//tmc2130_info_drv_status (data2);
 		//tmc2130_write (&tmc, WRITE_FLAG|REG_CHOPCONF, 0x00008008UL);
 		//tmc2130_set_en (&tmc, 1);
+
+
+		switch (cmd)
+		{
+		case APP_CMD_FORWARD:
+			printf ("APP_CMD_FORWARD\n");
+			stepper_status = tmc2130_read (&tmc, REG_DRVSTATUS, &stepper_data);
+			tmc2130_info_status (stepper_status);
+			tmc2130_info_DRVSTATUS (stepper_data);
+			tmc2130_write (&tmc, WRITE_FLAG|REG_CHOPCONF,   0x00008008UL); //native 256 microsteps, MRES=0, TBL=1=24, TOFF=8
+			tmc2130_set_en (&tmc, 0);
+			tmc2130_set_dir (&tmc, 0);
+			cmd = APP_CMD_CONTINUE;
+			break;
+		case APP_CMD_BACKWARD:
+			printf ("APP_CMD_BACKWARD\n");
+			stepper_status = tmc2130_read (&tmc, REG_DRVSTATUS, &stepper_data);
+			tmc2130_info_status (stepper_status);
+			tmc2130_info_DRVSTATUS (stepper_data);
+			tmc2130_write (&tmc, WRITE_FLAG|REG_CHOPCONF,   0x00008008UL); //native 256 microsteps, MRES=0, TBL=1=24, TOFF=8
+			tmc2130_set_en (&tmc, 0);
+			tmc2130_set_dir (&tmc, 1);
+			cmd = APP_CMD_CONTINUE;
+			break;
+		case APP_CMD_STANDSTILL:
+			printf ("APP_CMD_STANDSTILL\n");
+			tmc2130_set_en (&tmc, 1);
+			cmd = APP_CMD_CONTINUE;
+			break;
+		case APP_CMD_CONTINUE:
+			break;
+		}
+
 	}
 }

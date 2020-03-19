@@ -181,6 +181,7 @@ void tmc2130_set_period (struct tmc2130 * dev, u32_t period)
 	int r;
 	r = pwm_pin_set_usec (dev->dev_pwm_step, 1, period, dev->pulse, 0);
 	__ASSERT (r == 0, "pwm_pin_set_usec period (%u), pulse (%u) failed", period, dev->pulse);
+	dev->period = period;
 }
 
 
@@ -189,6 +190,7 @@ void tmc2130_set_pulse (struct tmc2130 * dev, u32_t pulse)
 	int r;
 	r = pwm_pin_set_usec (dev->dev_pwm_step, 1, dev->period, pulse, 0);
 	__ASSERT (r == 0, "pwm_pin_set_usec pulse (%u), period (%u) failed", pulse, dev->period);
+	dev->pulse = pulse;
 }
 
 

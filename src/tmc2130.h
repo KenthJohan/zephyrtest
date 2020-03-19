@@ -32,8 +32,8 @@
 #define TMC2130_STEP_PORT "GPIOA"
 
 //#define PERIOD (USEC_PER_SEC / 50U)
-#define PERIOD 100
-#define PULSEWIDTH 50
+#define PERIOD 40
+#define PULSEWIDTH 1
 
 //TMC2130 pin DIR ---orange--- (PA2,D1,17)
 #define TMC2130_DIR_PORT "GPIOA"

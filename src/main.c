@@ -39,6 +39,17 @@ LOG_MODULE_REGISTER(main);
 
 
 
+enum app_cmd
+{
+	APP_CMD_STANDSTILL,
+	APP_CMD_FORWARD,
+	APP_CMD_BACKWARD,
+	APP_CMD_DEMORUN,
+	APP_CMD_CONTINUE,
+};
+
+static enum app_cmd cmd = APP_CMD_STANDSTILL;
+
 
 
 extern u16_t but_val;
@@ -164,6 +175,12 @@ static ssize_t recv_tmc_reg (struct bt_conn *conn, const struct bt_gatt_attr *at
 	return 0;
 }
 
+static ssize_t demorun (struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags)
+{
+	cmd = APP_CMD_DEMORUN;
+	return 0;
+}
+
 
 static ssize_t read_u32 (struct bt_conn *conn, const struct bt_gatt_attr *attr,void *buf, u16_t len, u16_t offset)
 {
@@ -199,6 +216,8 @@ BT_GATT_CPF             (&cha_format_value),
 BT_GATT_CUD             ("Pin STEP pulse", BT_GATT_PERM_READ),
 BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, recv_tmc_reg, (void *)1),
 BT_GATT_CUD             ("reg_recv", BT_GATT_PERM_READ),
+BT_GATT_CHARACTERISTIC  (BT_UUID_DECLARE_16(0x2A56), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE, NULL, demorun, (void *)1),
+BT_GATT_CUD             ("demorun", BT_GATT_PERM_READ),
 );
 
 
@@ -262,20 +281,11 @@ static struct bt_conn_cb conn_callbacks =
 };
 
 
-enum app_cmd
-{
-	APP_CMD_STANDSTILL,
-	APP_CMD_FORWARD,
-	APP_CMD_BACKWARD,
-	APP_CMD_CONTINUE,
-};
-
-
 static struct gpio_callback button_0_cb;
 static struct gpio_callback button_1_cb;
 static struct gpio_callback button_2_cb;
 
-static enum app_cmd cmd = APP_CMD_CONTINUE;
+
 
 void button_0_pressed (struct device * gpio, struct gpio_callback * cb, u32_t pins)
 {
@@ -403,6 +413,17 @@ void main(void)
 
 		switch (cmd)
 		{
+		case APP_CMD_DEMORUN:
+			tmc2130_write (&tmc, WRITE_FLAG|REG_CHOPCONF,   0x00008008UL); //native 256 microsteps, MRES=0, TBL=1=24, TOFF=8
+			tmc2130_set_en (&tmc, 0);
+			tmc2130_set_dir (&tmc, 0);
+			k_sleep (K_SECONDS(4));
+			tmc2130_write (&tmc, WRITE_FLAG|REG_CHOPCONF,   0x00008008UL); //native 256 microsteps, MRES=0, TBL=1=24, TOFF=8
+			tmc2130_set_en (&tmc, 0);
+			tmc2130_set_dir (&tmc, 1);
+			k_sleep (K_SECONDS(4));
+			cmd = APP_CMD_STANDSTILL;
+			break;
 		case APP_CMD_FORWARD:
 			printf ("APP_CMD_FORWARD\n");
 			stepper_status = tmc2130_read (&tmc, REG_DRVSTATUS, &stepper_data);
